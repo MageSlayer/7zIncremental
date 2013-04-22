@@ -2,15 +2,15 @@
 2010-11-02 : Igor Pavlov : Public domain */
 
 #include <string.h>
+#include <stdio.h>
 
 /* #define _7ZIP_PPMD_SUPPPORT */
 
-#include "7z.h"
+#include "7zDec.h"
 
 #include "Bcj2.h"
 #include "Bra.h"
 #include "CpuArch.h"
-#include "LzmaDec.h"
 #include "Lzma2Dec.h"
 #ifdef _7ZIP_PPMD_SUPPPORT
 #include "Ppmd7.h"
@@ -123,6 +123,189 @@ static SRes SzDecodePpmd(CSzCoderInfo *coder, UInt64 inSize, ILookInStream *inSt
 
 #endif
 
+static SRes SzLzmaDecoderState_Init(CSzCoderInfo *coder, UInt64 inSize, ILookInStream *inStream,
+				    Byte *outBuffer, SizeT outSize, ISzAlloc *allocMain, SzLzmaDecoderState **state)
+{
+  //inspired by SzDecodeLzma
+  //initialization of object capable of incremental unpacking block by block
+  //contrary to SzDecodeLzma which does decompression to memory at one go.
+
+  SRes res = SZ_OK;
+  *state = 0;
+
+  MY_ALLOC(SzLzmaDecoderState, *state, 1, allocMain);
+
+  (*state)->lastRes = SZ_OK;
+  (*state)->coder = coder;
+  (*state)->inStream = inStream;
+  (*state)->outBuffer = outBuffer;
+  (*state)->outBufferCur = outBuffer;
+  (*state)->outSize = outSize;
+  (*state)->inSize = inSize;
+  (*state)->inSizeLeft = inSize;
+  (*state)->inBuffer = NULL; // means buffer is empty.
+  (*state)->inBufferEnd = NULL; // means buffer is empty.
+  (*state)->allocMain = allocMain;
+
+  LzmaDec_Construct(&(*state)->state);
+  RINOK(LzmaDec_AllocateProbs(&(*state)->state, coder->Props.data, (unsigned)coder->Props.size, allocMain));
+  (*state)->state.dic = outBuffer;
+  (*state)->state.dicBufSize = outSize;
+  LzmaDec_Init(&(*state)->state);
+
+  return res;
+}
+
+SRes SzLzmaDecoderState_Free(SzLzmaDecoderState *state)
+{
+  //inspired by SzDecodeLzma
+  //finalization of object capable of incremental unpacking block by block
+  SRes res = SZ_OK;
+
+  state->lastRes = SZ_ERROR_DATA;
+  LzmaDec_FreeProbs(&state->state, state->allocMain);
+  IAlloc_Free(state->allocMain, state);
+
+  return res;
+}
+
+void log(const char *s)
+{
+  printf("%s\n", s);
+}
+
+SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
+{
+  //inspired by SzDecodeLzma
+  //incremental unpacking block by block
+  //returns BlockRead bytes unpacked in this pass
+  //if return value == SZ_OK and BlockRead == 0 then nothing left to unpack.
+
+  (*BlockRead) = 0;
+  if ((state->lastRes != SZ_OK) ||
+      (state->inSizeLeft == 0))
+    {
+      log("1");
+      // make subsequent calls to SzLzmaDecoderState_UnpackBlock complete with last error code.
+      return state->lastRes;
+    }
+
+  log("2");
+  SRes res = SZ_OK;
+
+  for (;;)
+  {
+    /*
+      Reading block of data to unpack.
+     */
+    if ((state->inBuffer == NULL) ||            // buffer is still not read.
+	(state->inBuffer >= state->inBufferEnd)) // ... or already processed.
+      {
+	log("3");
+	size_t lookahead;
+	lookahead = LookToRead_BUF_SIZE; // it's worthless to require more than buffer size at a time, so just stick to it.
+	if (lookahead > state->inSizeLeft)
+	  lookahead = (size_t)state->inSizeLeft;
+
+	res = state->inStream->Look((void *)state->inStream, (const void **)&state->inBuffer, &lookahead);
+	if (res != SZ_OK)
+	  break;
+
+	// skip read data immediately
+	res = state->inStream->Skip((void *)state->inStream, lookahead);
+	if (res != SZ_OK)
+	  break;
+
+	// save end of read data in buffer.
+	state->inBufferEnd = state->inBuffer + lookahead;
+      }
+
+    {
+      SizeT unpackedLen = (state->outBuffer + state->outSize) - state->outBufferCur; // determine left space in outbuffer
+      SizeT inConsumed = state->inBufferEnd - state->inBuffer; // give rest of read buffer to unpack
+      //SizeT dicPos = state->state.dicPos;
+      ELzmaStatus status;
+
+      printf("unpackedLen=%d, inConsumed=%d, inSizeLeft=%d\n", unpackedLen, inConsumed, state->inSizeLeft);
+      log("4");
+      //res = LzmaDec_DecodeToDic(&state->state, state->outSize, inBuf, &inProcessed, LZMA_FINISH_END, &status);
+      res = LzmaDec_DecodeToBuf(&state->state,
+				state->outBufferCur, &unpackedLen,  // destination
+				state->inBuffer, &inConsumed,    // source data
+				LZMA_FINISH_ANY, &status);
+      if (res != SZ_OK)
+	break;
+      printf("unpackedLen=%d, inConsumed=%d, status=%d\n", unpackedLen, inConsumed, status);
+
+      log("5");
+
+      state->inBuffer += inConsumed;
+      state->inSizeLeft -= inConsumed;
+      state->outBufferCur += unpackedLen;
+      (*BlockRead) += unpackedLen;
+
+      if (status == LZMA_STATUS_FINISHED_WITH_MARK)
+	{
+	  //end of stream to unpack
+	  log("6");
+	  state->inSizeLeft = 0;
+	  break;
+	}
+
+      if (status == LZMA_STATUS_NEEDS_MORE_INPUT)
+	{
+	  // do not rely on inConsumed properly calculated
+	  // and force to read next block to unpack
+	  //state->inBuffer = state->inBufferEnd;
+
+	  if (state->outBufferCur >= state->outBuffer + state->outSize) // out buffer is already full
+	    {
+	      log("7");
+	      goto outBufIsFull;
+	    }
+
+	  log("8");
+	  continue;
+	}
+
+      if ((status == LZMA_STATUS_MAYBE_FINISHED_WITHOUT_MARK) ||
+	  (status == LZMA_STATUS_NOT_FINISHED))
+	{
+	  // packed stream has not been read yet...
+	  if (state->outBufferCur >= state->outBuffer + state->outSize) // out buffer is already full
+	    {
+	      log("9");
+	      goto outBufIsFull;
+	    }
+
+	  log("10");
+	  //try to continue with unpacking
+	  continue;
+	}
+
+      // unknown status returned.
+      // ... then break with error.
+      log("11");
+      res = SZ_ERROR_UNSUPPORTED;
+      break;
+    }
+  }
+
+  goto exit1;
+
+ outBufIsFull:
+  state->outBufferCur = state->outBuffer; // move output buffer pointer back to the beginning.
+
+ exit1:
+  if (res != SZ_OK)
+    {
+      // just a precaution
+      (*BlockRead) = 0;
+    }
+
+  state->lastRes = res;
+  return res;
+}
 
 static SRes SzDecodeLzma(CSzCoderInfo *coder, UInt64 inSize, ILookInStream *inStream,
     Byte *outBuffer, SizeT outSize, ISzAlloc *allocMain)
@@ -451,6 +634,59 @@ static SRes SzFolder_Decode2(const CSzFolder *folder, const UInt64 *packSizes,
         default:
           return SZ_ERROR_UNSUPPORTED;
       }
+    }
+  }
+  return SZ_OK;
+}
+
+SRes SzFolder_Decode_Block(const CSzFolder *folder, const UInt64 *packSizes,
+			   ILookInStream *inStream, UInt64 startPos,
+			   Byte *outBuffer, SizeT outSize, ISzAlloc *allocMain,
+			   SzLzmaDecoderState **state
+			   )
+{
+  // inspiration from SzFolder_Decode2
+  // made to allow incremental unpacking using SzLzmaDecoderState_UnpackBlock
+
+  (*state) = NULL;
+  UInt32 ci;
+
+  RINOK(CheckSupportedFolder(folder));
+
+  for (ci = 0; ci < folder->NumCoders; ci++)
+  {
+    CSzCoderInfo *coder = &folder->Coders[ci];
+
+    if (IS_MAIN_METHOD((UInt32)coder->MethodID))
+    {
+      UInt32 si = 0;
+      UInt64 offset;
+      UInt64 inSize;
+      if (folder->NumCoders == 4)
+      {
+        UInt32 indices[] = { 3, 2, 0 };
+        si = indices[ci];
+      }
+      offset = GetSum(packSizes, si);
+      inSize = packSizes[si];
+
+      RINOK(LookInStream_SeekTo(inStream, startPos + offset));
+
+      // only LZMA method is supported for now
+      if (coder->MethodID == k_LZMA)
+	{
+	  RINOK(SzLzmaDecoderState_Init(coder, inSize, inStream,
+					outBuffer, outSize, allocMain, state));
+	  break;
+	}
+      else
+	{
+	  return SZ_ERROR_UNSUPPORTED;
+	}
+    }
+    else
+    {
+      return SZ_ERROR_UNSUPPORTED;
     }
   }
   return SZ_OK;

@@ -136,17 +136,17 @@ void SzAr_Free(CSzAr *p, ISzAlloc *alloc);
       *outBufferSize
     You can consider "*outBuffer" as cache of solid block. If your archive is solid,
     it will increase decompression speed.
-  
+
     If you use external function, you can declare these 3 cache variables
     (blockIndex, outBuffer, outBufferSize) as static in that external function.
-    
+
     Free *outBuffer and set *outBuffer to 0, if you want to flush cache.
 */
 
 typedef struct
 {
   CSzAr db;
-  
+
   UInt64 startPosAfterHeader;
   UInt64 dataPos;
 
@@ -197,6 +197,30 @@ SZ_ERROR_FAIL
 */
 
 SRes SzArEx_Open(CSzArEx *p, ILookInStream *inStream, ISzAlloc *allocMain, ISzAlloc *allocTemp);
+
+// Buffered unpack
+// short pseudo-code of usage
+// SzArEx_Extract_Buffered(..., outBuffer, state);
+// do
+// {
+//   res = SzArEx_Extract_Buffered_Next(state, BlockRead);
+//   ProcessBuffer(outBuffer);
+// }
+// while ((res == SZ_OK) && (BlockRead != 0));
+// SzArEx_Extract_Buffered_Free(state);
+SRes SzArEx_Extract_Buffered(
+			     const CSzArEx *p,
+			     ILookInStream *inStream,
+			     UInt32 fileIndex,
+			     UInt32 *blockIndex,
+			     Byte *outBuffer,
+			     size_t outBufferSize,
+			     ISzAlloc *allocMain,
+			     void **_state //SzLzmaDecoderState ** (opaque!!! do not cast)
+			     );
+
+SRes SzArEx_Extract_Buffered_Next(void /*SzLzmaDecoderState*/ *_state, SizeT *BlockRead);
+SRes SzArEx_Extract_Buffered_Free(void /*SzLzmaDecoderState*/ *_state);
 
 EXTERN_C_END
 

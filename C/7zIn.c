@@ -4,6 +4,8 @@
 #include <string.h>
 
 #include "7z.h"
+#include "7zDec.h"
+#include "7zAlloc.h"
 #include "7zCrc.h"
 #include "CpuArch.h"
 
@@ -172,9 +174,6 @@ UInt64 GetFilePackSize(int fileIndex) const
   return 0;
 }
 */
-
-#define MY_ALLOC(T, p, size, alloc) { if ((size) == 0) p = 0; else \
-  if ((p = (T *)IAlloc_Alloc(alloc, (size) * sizeof(T))) == 0) return SZ_ERROR_MEM; }
 
 static SRes SzArEx_Fill(CSzArEx *p, ISzAlloc *alloc)
 {
@@ -537,12 +536,12 @@ static SRes SzGetNextFolderItem(CSzData *sd, CSzFolder *folder, ISzAlloc *alloc)
 {
   UInt32 numCoders, numBindPairs, numPackStreams, i;
   UInt32 numInStreams = 0, numOutStreams = 0;
-  
+
   RINOK(SzReadNumber32(sd, &numCoders));
   if (numCoders > NUM_FOLDER_CODERS_MAX)
     return SZ_ERROR_UNSUPPORTED;
   folder->NumCoders = numCoders;
-  
+
   MY_ALLOC(CSzCoderInfo, folder->Coders, (size_t)numCoders, alloc);
 
   for (i = 0; i < numCoders; i++)
@@ -810,7 +809,7 @@ static SRes SzReadSubStreamsInfo(
       numDigests += numSubstreams;
   }
 
- 
+
   si = 0;
   for (;;)
   {
@@ -963,8 +962,8 @@ static SRes SzReadHeader2(
     RINOK(SzReadArchiveProperties(sd));
     RINOK(SzReadID(sd, &type));
   }
- 
- 
+
+
   if (type == k7zIdMainStreamsInfo)
   {
     RINOK(SzReadStreamsInfo(sd,
@@ -982,7 +981,7 @@ static SRes SzReadHeader2(
     return SZ_OK;
   if (type != k7zIdFilesInfo)
     return SZ_ERROR_ARCHIVE;
-  
+
   RINOK(SzReadNumber32(sd, &numFiles));
   p->db.NumFiles = numFiles;
 
@@ -1165,19 +1164,19 @@ static SRes SzReadAndDecodePackedStreams2(
   RINOK(SzReadStreamsInfo(sd, &dataStartPos, p,
       &numUnpackStreams,  unpackSizes, digestsDefined, digests,
       allocTemp, allocTemp));
-  
+
   dataStartPos += baseOffset;
   if (p->NumFolders != 1)
     return SZ_ERROR_ARCHIVE;
 
   folder = p->Folders;
   unpackSize = SzFolder_GetUnpackSize(folder);
-  
+
   RINOK(LookInStream_SeekTo(inStream, dataStartPos));
 
   if (!Buf_Create(outBuffer, (size_t)unpackSize, allocTemp))
     return SZ_ERROR_MEM;
-  
+
   res = SzFolder_Decode(folder, p->PackSizes,
           inStream, dataStartPos,
           outBuffer->data, (size_t)unpackSize, allocTemp);
@@ -1240,7 +1239,7 @@ static SRes SzArEx_Open2(
   nextHeaderCRC = GetUi32(header + 28);
 
   p->startPosAfterHeader = startArcPos + k7zStartHeaderSize;
-  
+
   if (CrcCalc(header + 12, 20) != GetUi32(header + 8))
     return SZ_ERROR_CRC;
 
@@ -1356,9 +1355,9 @@ SRes SzArEx_Extract(
     *blockIndex = folderIndex;
     IAlloc_Free(allocMain, *outBuffer);
     *outBuffer = 0;
-    
+
     RINOK(LookInStream_SeekTo(inStream, startOffset));
-    
+
     if (res == SZ_OK)
     {
       *outBufferSize = unpackSize;
@@ -1399,4 +1398,63 @@ SRes SzArEx_Extract(
       res = SZ_ERROR_CRC;
   }
   return res;
+}
+
+SRes SzArEx_Extract_Buffered(
+			     const CSzArEx *p,
+			     ILookInStream *inStream,
+			     UInt32 fileIndex,
+			     UInt32 *blockIndex,
+			     Byte *outBuffer,
+			     size_t outBufferSize,
+			     ISzAlloc *allocMain,
+			     void /*SzLzmaDecoderState*/ **_state
+			     )
+{
+  SzLzmaDecoderState **state = (SzLzmaDecoderState **)_state;
+
+  UInt32 folderIndex = p->FileIndexToFolderIndexMap[fileIndex];
+  SRes res = SZ_OK;
+  if (folderIndex == (UInt32)-1)
+    {
+      *blockIndex = folderIndex;
+      return SZ_OK;
+    }
+
+  if (*blockIndex != folderIndex)
+    {
+      CSzFolder *folder = p->db.Folders + folderIndex;
+      UInt64 unpackSizeSpec = SzFolder_GetUnpackSize(folder);
+      //size_t unpackSize = (size_t)unpackSizeSpec;
+      size_t unpackSize = (size_t)outBufferSize;
+
+      UInt64 startOffset = SzArEx_GetFolderStreamPos(p, folderIndex, 0);
+      *blockIndex = folderIndex;
+
+      RINOK(LookInStream_SeekTo(inStream, startOffset));
+
+      //construct and return an object to decompress incrementally
+      res = SzFolder_Decode_Block(folder,
+				  p->db.PackSizes + p->FolderStartPackStreamIndex[folderIndex],
+				  inStream, startOffset,
+				  outBuffer, unpackSize, allocMain,
+				  state
+				  );
+    }
+  return res;
+}
+
+SRes SzArEx_Extract_Buffered_Next(void /*SzLzmaDecoderState*/ *_state, SizeT *BlockRead)
+{
+  // unpack next block
+  SzLzmaDecoderState *state = (SzLzmaDecoderState *)_state;
+
+  return SzLzmaDecoderState_UnpackBlock(state, BlockRead);
+}
+
+SRes SzArEx_Extract_Buffered_Free(void /*SzLzmaDecoderState*/ *_state)
+{
+  SzLzmaDecoderState *state = (SzLzmaDecoderState *)_state;
+
+  return SzLzmaDecoderState_Free(state);
 }
