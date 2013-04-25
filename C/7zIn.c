@@ -1404,7 +1404,6 @@ SRes SzArEx_Extract_Buffered(
 			     const CSzArEx *p,
 			     ILookInStream *inStream,
 			     UInt32 fileIndex,
-			     UInt32 *blockIndex,
 			     Byte *outBuffer,
 			     size_t outBufferSize,
 			     ISzAlloc *allocMain,
@@ -1412,35 +1411,24 @@ SRes SzArEx_Extract_Buffered(
 			     )
 {
   SzLzmaDecoderState **state = (SzLzmaDecoderState **)_state;
+  (*state) = NULL;
 
   UInt32 folderIndex = p->FileIndexToFolderIndexMap[fileIndex];
-  SRes res = SZ_OK;
-  if (folderIndex == (UInt32)-1)
-    {
-      *blockIndex = folderIndex;
-      return SZ_OK;
-    }
 
-  if (*blockIndex != folderIndex)
-    {
-      CSzFolder *folder = p->db.Folders + folderIndex;
-      UInt64 unpackSizeSpec = SzFolder_GetUnpackSize(folder);
-      //size_t unpackSize = (size_t)unpackSizeSpec;
-      size_t unpackSize = (size_t)outBufferSize;
+  CSzFolder *folder = p->db.Folders + folderIndex;
+  size_t unpackSize = (size_t)outBufferSize;
 
-      UInt64 startOffset = SzArEx_GetFolderStreamPos(p, folderIndex, 0);
-      *blockIndex = folderIndex;
+  UInt64 startOffset = SzArEx_GetFolderStreamPos(p, folderIndex, 0);
 
-      RINOK(LookInStream_SeekTo(inStream, startOffset));
+  RINOK(LookInStream_SeekTo(inStream, startOffset));
 
-      //construct and return an object to decompress incrementally
-      res = SzFolder_Decode_Block(folder,
-				  p->db.PackSizes + p->FolderStartPackStreamIndex[folderIndex],
-				  inStream, startOffset,
-				  outBuffer, unpackSize, allocMain,
-				  state
-				  );
-    }
+  //construct and return an object to decompress incrementally
+  SRes res = SzFolder_Decode_Block(folder,
+				   p->db.PackSizes + p->FolderStartPackStreamIndex[folderIndex],
+				   inStream, startOffset,
+				   outBuffer, unpackSize, allocMain,
+				   state
+				   );
   return res;
 }
 

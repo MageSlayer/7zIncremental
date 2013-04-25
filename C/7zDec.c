@@ -131,7 +131,7 @@ static SRes SzLzmaDecoderState_Init(CSzCoderInfo *coder, UInt64 inSize, ILookInS
   //contrary to SzDecodeLzma which does decompression to memory at one go.
 
   SRes res = SZ_OK;
-  *state = 0;
+  *state = NULL;
 
   MY_ALLOC(SzLzmaDecoderState, *state, 1, allocMain);
 
@@ -143,14 +143,21 @@ static SRes SzLzmaDecoderState_Init(CSzCoderInfo *coder, UInt64 inSize, ILookInS
   (*state)->outSize = outSize;
   (*state)->inSize = inSize;
   (*state)->inSizeLeft = inSize;
+  (*state)->outSizeWritten = 0;
   (*state)->inBuffer = NULL; // means buffer is empty.
   (*state)->inBufferEnd = NULL; // means buffer is empty.
   (*state)->allocMain = allocMain;
 
   LzmaDec_Construct(&(*state)->state);
   RINOK(LzmaDec_AllocateProbs(&(*state)->state, coder->Props.data, (unsigned)coder->Props.size, allocMain));
-  (*state)->state.dic = outBuffer;
-  (*state)->state.dicBufSize = outSize;
+
+  // allocate internal dictionary buffer
+  Byte *dicBuf;
+  size_t dicBufSize = 1 << 18;
+  MY_ALLOC(Byte, dicBuf, dicBufSize, allocMain);
+  (*state)->state.dic = dicBuf;
+  (*state)->state.dicBufSize = dicBufSize;
+
   LzmaDec_Init(&(*state)->state);
 
   return res;
@@ -161,6 +168,8 @@ SRes SzLzmaDecoderState_Free(SzLzmaDecoderState *state)
   //inspired by SzDecodeLzma
   //finalization of object capable of incremental unpacking block by block
   SRes res = SZ_OK;
+
+  IAlloc_Free(state->allocMain, state->state.dic);
 
   state->lastRes = SZ_ERROR_DATA;
   LzmaDec_FreeProbs(&state->state, state->allocMain);
@@ -183,7 +192,7 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
 
   (*BlockRead) = 0;
   if ((state->lastRes != SZ_OK) ||
-      (state->inSizeLeft == 0))
+      (state->inSizeLeft <= 0))
     {
       log("1");
       // make subsequent calls to SzLzmaDecoderState_UnpackBlock complete with last error code.
@@ -204,12 +213,25 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
 	log("3");
 	size_t lookahead;
 	lookahead = LookToRead_BUF_SIZE; // it's worthless to require more than buffer size at a time, so just stick to it.
-	if (lookahead > state->inSizeLeft)
+
+	if (lookahead > state->inSizeLeft)  // This code is necessary as LZMA decoder does not detect end of stream properly for some reason!?!
 	  lookahead = (size_t)state->inSizeLeft;
 
 	res = state->inStream->Look((void *)state->inStream, (const void **)&state->inBuffer, &lookahead);
 	if (res != SZ_OK)
 	  break;
+
+	if (lookahead == 0)
+	  {
+	    //printf("3.1 nothing to read\n");
+
+	    //nothing left to read?
+	    //res = SZ_ERROR_DATA;
+	    res = SZ_OK;  // highly suspicious, but it seems it's the only way to flush end of stream.
+	    break;
+	  }
+
+	printf("3.2 lookahead=%d\n", lookahead);
 
 	// skip read data immediately
 	res = state->inStream->Skip((void *)state->inStream, lookahead);
@@ -235,7 +257,6 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
 				LZMA_FINISH_ANY, &status);
       if (res != SZ_OK)
 	break;
-      printf("unpackedLen=%d, inConsumed=%d, status=%d\n", unpackedLen, inConsumed, status);
 
       log("5");
 
@@ -243,6 +264,9 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
       state->inSizeLeft -= inConsumed;
       state->outBufferCur += unpackedLen;
       (*BlockRead) += unpackedLen;
+      state->outSizeWritten += unpackedLen;
+
+      printf("unpackedLen=%d, inConsumed=%d, outWritten=%d, status=%d\n", unpackedLen, inConsumed, state->outSizeWritten, status);
 
       if (status == LZMA_STATUS_FINISHED_WITH_MARK)
 	{

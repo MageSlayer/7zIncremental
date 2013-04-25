@@ -212,7 +212,6 @@ SRes SzArEx_Extract_Buffered(
 			     const CSzArEx *p,
 			     ILookInStream *inStream,
 			     UInt32 fileIndex,
-			     UInt32 *blockIndex,
 			     Byte *outBuffer,
 			     size_t outBufferSize,
 			     ISzAlloc *allocMain,

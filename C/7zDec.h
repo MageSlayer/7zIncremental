@@ -18,6 +18,7 @@ typedef struct
   Byte *outBuffer;		// User-specified unpack buffer.
   Byte *outBufferCur;		// Current unpack buffer position (always within [outBuffer; outBuffer + outSize - 1]).
   SizeT outSize;		// User-specified unpack buffer size.
+  SizeT outSizeWritten;         // Bytes unpacked so far.
 
   Byte *inBuffer;               // Moves to the end of inStream buffer (inBufferEnd) while blocks are unpacked.
                                 // No need to free it as points into inStream buffer.
