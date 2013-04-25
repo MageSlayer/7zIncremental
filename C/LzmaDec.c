@@ -4,7 +4,6 @@
 #include "LzmaDec.h"
 
 #include <string.h>
-#include <stdio.h>
 
 #define kNumTopBits 24
 #define kTopValue ((UInt32)1 << kNumTopBits)
@@ -864,7 +863,6 @@ SRes LzmaDec_DecodeToBuf(CLzmaDec *p, Byte *dest, SizeT *destLen, const Byte *sr
     }
 
     res = LzmaDec_DecodeToDic(p, outSizeCur, src, &inSizeCur, curFinishMode, status);
-    printf("LzmaDec_DecodeToDic status=%d\n", *status);
 
     src += inSizeCur;
     inSize -= inSizeCur;

@@ -2,7 +2,6 @@
 2010-11-02 : Igor Pavlov : Public domain */
 
 #include <string.h>
-#include <stdio.h>
 
 /* #define _7ZIP_PPMD_SUPPPORT */
 
@@ -178,11 +177,6 @@ SRes SzLzmaDecoderState_Free(SzLzmaDecoderState *state)
   return res;
 }
 
-void log(const char *s)
-{
-  printf("%s\n", s);
-}
-
 SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
 {
   //inspired by SzDecodeLzma
@@ -194,12 +188,10 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
   if ((state->lastRes != SZ_OK) ||
       (state->inSizeLeft <= 0))
     {
-      log("1");
       // make subsequent calls to SzLzmaDecoderState_UnpackBlock complete with last error code.
       return state->lastRes;
     }
 
-  log("2");
   SRes res = SZ_OK;
 
   for (;;)
@@ -210,7 +202,6 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
     if ((state->inBuffer == NULL) ||            // buffer is still not read.
 	(state->inBuffer >= state->inBufferEnd)) // ... or already processed.
       {
-	log("3");
 	size_t lookahead;
 	lookahead = LookToRead_BUF_SIZE; // it's worthless to require more than buffer size at a time, so just stick to it.
 
@@ -223,15 +214,10 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
 
 	if (lookahead == 0)
 	  {
-	    //printf("3.1 nothing to read\n");
-
-	    //nothing left to read?
 	    //res = SZ_ERROR_DATA;
 	    res = SZ_OK;  // highly suspicious, but it seems it's the only way to flush end of stream.
 	    break;
 	  }
-
-	printf("3.2 lookahead=%d\n", lookahead);
 
 	// skip read data immediately
 	res = state->inStream->Skip((void *)state->inStream, lookahead);
@@ -248,8 +234,6 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
       //SizeT dicPos = state->state.dicPos;
       ELzmaStatus status;
 
-      printf("unpackedLen=%d, inConsumed=%d, inSizeLeft=%d\n", unpackedLen, inConsumed, state->inSizeLeft);
-      log("4");
       //res = LzmaDec_DecodeToDic(&state->state, state->outSize, inBuf, &inProcessed, LZMA_FINISH_END, &status);
       res = LzmaDec_DecodeToBuf(&state->state,
 				state->outBufferCur, &unpackedLen,  // destination
@@ -258,20 +242,15 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
       if (res != SZ_OK)
 	break;
 
-      log("5");
-
       state->inBuffer += inConsumed;
       state->inSizeLeft -= inConsumed;
       state->outBufferCur += unpackedLen;
       (*BlockRead) += unpackedLen;
       state->outSizeWritten += unpackedLen;
 
-      printf("unpackedLen=%d, inConsumed=%d, outWritten=%d, status=%d\n", unpackedLen, inConsumed, state->outSizeWritten, status);
-
       if (status == LZMA_STATUS_FINISHED_WITH_MARK)
 	{
 	  //end of stream to unpack
-	  log("6");
 	  state->inSizeLeft = 0;
 	  break;
 	}
@@ -284,11 +263,9 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
 
 	  if (state->outBufferCur >= state->outBuffer + state->outSize) // out buffer is already full
 	    {
-	      log("7");
 	      goto outBufIsFull;
 	    }
 
-	  log("8");
 	  continue;
 	}
 
@@ -298,18 +275,15 @@ SRes SzLzmaDecoderState_UnpackBlock(SzLzmaDecoderState *state, SizeT *BlockRead)
 	  // packed stream has not been read yet...
 	  if (state->outBufferCur >= state->outBuffer + state->outSize) // out buffer is already full
 	    {
-	      log("9");
 	      goto outBufIsFull;
 	    }
 
-	  log("10");
 	  //try to continue with unpacking
 	  continue;
 	}
 
       // unknown status returned.
       // ... then break with error.
-      log("11");
       res = SZ_ERROR_UNSUPPORTED;
       break;
     }
