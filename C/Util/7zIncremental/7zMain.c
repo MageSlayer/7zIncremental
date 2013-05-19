@@ -118,7 +118,7 @@ static SRes Utf16_To_Char(CBuf *buf, const UInt16 *s, int fileMode)
           AreFileApisANSI() ? CP_ACP : CP_OEMCP
           #endif
           ) : CP_OEMCP,
-          0, s, len, (char *)buf->data, size, &defaultChar, &defUsed);
+          0, (LPCWSTR)s, len, (char *)buf->data, size, &defaultChar, &defUsed);
       if (numChars == 0 || numChars >= size)
         return SZ_ERROR_FAIL;
       buf->data[numChars] = 0;
@@ -135,7 +135,7 @@ static WRes MyCreateDir(const UInt16 *name)
 {
   #ifdef USE_WINDOWS_FILE
 
-  return CreateDirectoryW(name, NULL) ? 0 : GetLastError();
+  return CreateDirectoryW((LPCWSTR)name, NULL) ? 0 : GetLastError();
 
   #else
 
@@ -160,7 +160,7 @@ static WRes MyCreateDir(const UInt16 *name)
 static WRes OutFile_OpenUtf16(CSzFile *p, const UInt16 *name)
 {
   #ifdef USE_WINDOWS_FILE
-  return OutFile_OpenW(p, name);
+  return OutFile_OpenW(p, (const WCHAR*)name);
   #else
   CBuf buf;
   WRes res;
@@ -494,7 +494,7 @@ int MY_CDECL main(int numargs, char *args[])
           }
           #ifdef USE_WINDOWS_FILE
           if (f->AttribDefined)
-            SetFileAttributesW(destPath, f->Attrib);
+            SetFileAttributesW((LPCWSTR)destPath, f->Attrib);
           #endif
         }
         printf("\n");
