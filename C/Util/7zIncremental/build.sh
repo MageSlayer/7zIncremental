@@ -1,6 +1,13 @@
 #!/bin/bash
 
-# build script for gcc
-GCC_FLAGS="-O0 -g -ggdb -g3"
+JOBS="-j3"
 
-make GCC_FLAGS="$GCC_FLAGS" -f makefile.gcc
+function build_targets()
+{
+
+    make $JOBS CPU_TARGET=i386 OS_TARGET=linux $@
+    make $JOBS CPU_TARGET=x86_64 OS_TARGET=win64 $@
+}
+
+build_targets DEBUG=1
+build_targets DEBUG=0

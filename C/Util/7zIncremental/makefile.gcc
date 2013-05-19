@@ -1,70 +1,73 @@
 PROG = 7zDec
-CXX = g++
 LIB =
 RM = rm -f
-CFLAGS = -c -Wall $(GCC_FLAGS)
+RMDIR = rmdir
 
-OBJS = 7zMain.o 7zAlloc.o 7zBuf.o 7zBuf2.o 7zCrc.o 7zCrcOpt.o 7zDec.o 7zIn.o CpuArch.o LzmaDec.o Lzma2Dec.o Bra.o Bra86.o Bcj2.o Ppmd7.o Ppmd7Dec.o 7zFile.o 7zStream.o
+OBJS = $(OBJ_DIR)/7zMain.o $(OBJ_DIR)/7zAlloc.o $(OBJ_DIR)/7zBuf.o $(OBJ_DIR)/7zBuf2.o $(OBJ_DIR)/7zCrc.o $(OBJ_DIR)/7zCrcOpt.o $(OBJ_DIR)/7zDec.o $(OBJ_DIR)/7zIn.o $(OBJ_DIR)/CpuArch.o $(OBJ_DIR)/LzmaDec.o $(OBJ_DIR)/Lzma2Dec.o $(OBJ_DIR)/Bra.o $(OBJ_DIR)/Bra86.o $(OBJ_DIR)/Bcj2.o $(OBJ_DIR)/Ppmd7.o $(OBJ_DIR)/Ppmd7Dec.o $(OBJ_DIR)/7zFile.o $(OBJ_DIR)/7zStream.o
 
-all: $(PROG)
+all: $(OBJ_DIR) $(OBJ_DIR)/$(PROG)
 
-$(PROG): $(OBJS)
-	$(CXX) -o $(PROG) $(LDFLAGS) $(OBJS) $(LIB)
+$(OBJ_DIR) :
+	mkdir -p $@
 
-7zMain.o: 7zMain.c
-	$(CXX) $(CFLAGS) 7zMain.c
+$(OBJ_DIR)/$(PROG): $(OBJS)
+	$(CXX) -o $(OBJ_DIR)/$(PROG) $(LDFLAGS) $(OBJS) $(LIB)
 
-7zAlloc.o: ../../7zAlloc.c
-	$(CXX) $(CFLAGS) ../../7zAlloc.c
+$(OBJ_DIR)/7zMain.o: 7zMain.c 
+	$(CXX) $(CFLAGS) 7zMain.c -o $@
 
-7zBuf.o: ../../7zBuf.c
-	$(CXX) $(CFLAGS) ../../7zBuf.c
+$(OBJ_DIR)/7zAlloc.o: ../../7zAlloc.c 
+	$(CXX) $(CFLAGS) ../../7zAlloc.c -o $@
 
-7zBuf2.o: ../../7zBuf2.c
-	$(CXX) $(CFLAGS) ../../7zBuf2.c
+$(OBJ_DIR)/7zBuf.o: ../../7zBuf.c 
+	$(CXX) $(CFLAGS) ../../7zBuf.c  -o $@
 
-7zCrc.o: ../../7zCrc.c
-	$(CXX) $(CFLAGS) ../../7zCrc.c
+$(OBJ_DIR)/7zBuf2.o: ../../7zBuf2.c 
+	$(CXX) $(CFLAGS) ../../7zBuf2.c  -o $@
 
-7zCrcOpt.o: ../../7zCrc.c
-	$(CXX) $(CFLAGS) ../../7zCrcOpt.c
+$(OBJ_DIR)/7zCrc.o: ../../7zCrc.c 
+	$(CXX) $(CFLAGS) ../../7zCrc.c  -o $@
 
-7zDec.o: ../../7zDec.c
-	$(CXX) $(CFLAGS) -D_7ZIP_PPMD_SUPPPORT ../../7zDec.c
+$(OBJ_DIR)/7zCrcOpt.o: ../../7zCrc.c 
+	$(CXX) $(CFLAGS) ../../7zCrcOpt.c  -o $@
 
-7zIn.o: ../../7zIn.c
-	$(CXX) $(CFLAGS) ../../7zIn.c
+$(OBJ_DIR)/7zDec.o: ../../7zDec.c 
+	$(CXX) $(CFLAGS) -D_7ZIP_PPMD_SUPPPORT ../../7zDec.c  -o $@
 
-CpuArch.o: ../../CpuArch.c
-	$(CXX) $(CFLAGS) ../../CpuArch.c
+$(OBJ_DIR)/7zIn.o: ../../7zIn.c
+	$(CXX) $(CFLAGS) ../../7zIn.c  -o $@
 
-LzmaDec.o: ../../LzmaDec.c
-	$(CXX) $(CFLAGS) ../../LzmaDec.c
+$(OBJ_DIR)/CpuArch.o: ../../CpuArch.c
+	$(CXX) $(CFLAGS) ../../CpuArch.c  -o $@
 
-Lzma2Dec.o: ../../Lzma2Dec.c
-	$(CXX) $(CFLAGS) ../../Lzma2Dec.c
+$(OBJ_DIR)/LzmaDec.o: ../../LzmaDec.c
+	$(CXX) $(CFLAGS) ../../LzmaDec.c  -o $@
 
-Bra.o: ../../Bra.c
-	$(CXX) $(CFLAGS) ../../Bra.c
+$(OBJ_DIR)/Lzma2Dec.o: ../../Lzma2Dec.c
+	$(CXX) $(CFLAGS) ../../Lzma2Dec.c  -o $@
 
-Bra86.o: ../../Bra86.c
-	$(CXX) $(CFLAGS) ../../Bra86.c
+$(OBJ_DIR)/Bra.o: ../../Bra.c
+	$(CXX) $(CFLAGS) ../../Bra.c  -o $@
 
-Bcj2.o: ../../Bcj2.c
-	$(CXX) $(CFLAGS) ../../Bcj2.c
+$(OBJ_DIR)/Bra86.o: ../../Bra86.c
+	$(CXX) $(CFLAGS) ../../Bra86.c  -o $@
 
-Ppmd7.o: ../../Ppmd7.c
-	$(CXX) $(CFLAGS) ../../Ppmd7.c
+$(OBJ_DIR)/Bcj2.o: ../../Bcj2.c
+	$(CXX) $(CFLAGS) ../../Bcj2.c  -o $@
 
-Ppmd7Dec.o: ../../Ppmd7Dec.c
-	$(CXX) $(CFLAGS) ../../Ppmd7Dec.c
+$(OBJ_DIR)/Ppmd7.o: ../../Ppmd7.c
+	$(CXX) $(CFLAGS) ../../Ppmd7.c  -o $@
 
-7zFile.o: ../../7zFile.c
-	$(CXX) $(CFLAGS) ../../7zFile.c
+$(OBJ_DIR)/Ppmd7Dec.o: ../../Ppmd7Dec.c
+	$(CXX) $(CFLAGS) ../../Ppmd7Dec.c  -o $@
 
-7zStream.o: ../../7zStream.c
-	$(CXX) $(CFLAGS) ../../7zStream.c
+$(OBJ_DIR)/7zFile.o: ../../7zFile.c
+	$(CXX) $(CFLAGS) ../../7zFile.c  -o $@
+
+$(OBJ_DIR)/7zStream.o: ../../7zStream.c
+	$(CXX) $(CFLAGS) ../../7zStream.c  -o $@
 
 clean:
-	-$(RM) $(PROG) $(OBJS)
+	-$(RM) $(OBJ_DIR)/$(PROG) $(OBJS)
+	-$(RMDIR) $(OBJ_DIR)
 
